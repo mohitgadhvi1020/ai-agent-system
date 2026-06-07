@@ -9,6 +9,9 @@ any API keys in heuristic demo mode.
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
 
+**🚀 Live demo:** <https://huggingface.co/spaces/mohit15150501/ai-agent-system>
+(UI at `/`, Swagger at `/docs` — runs with zero API keys)
+
 ---
 
 ## Highlights
