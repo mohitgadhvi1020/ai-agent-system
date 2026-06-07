@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent System — Live Demo</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2230; --border: #2d3748;
+    --text: #e6edf3; --muted: #8b949e; --accent: #6366f1; --accent2: #22d3ee;
+    --green: #3fb950; --amber: #d29922; --red: #f85149; --purple: #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+  }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", monospace; }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; background: var(--panel);
+  }
+  header .logo {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: grid; place-items: center; font-weight: 800; font-size: 18px;
+  }
+  header h1 { font-size: 16px; font-weight: 700; }
+  header .sub { font-size: 12px; color: var(--muted); }
+  header .status { margin-left: auto; font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .layout { display: grid; grid-template-columns: 1fr 420px; height: calc(100vh - 63px); }
+  .chat { display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+  .messages { flex: 1; overflow-y: auto; padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+  .msg { max-width: 88%; display: flex; flex-direction: column; gap: 6px; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .bubble { padding: 12px 15px; border-radius: 14px; line-height: 1.5; font-size: 14px; }
+  .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.agent .bubble { background: var(--panel2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg .role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .toolcard {
+    margin-top: 8px; background: #11161f; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; font-size: 12.5px;
+  }
+  .toolcard summary {
+    cursor: pointer; padding: 9px 12px; display: flex; gap: 8px; align-items: center;
+    background: #1a2130; list-style: none;
+  }
+  .toolcard summary::-webkit-details-marker { display: none; }
+  .toolcard .tname { color: var(--accent2); font-weight: 600; }
+  .toolcard pre { padding: 12px; overflow-x: auto; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .examples { padding: 10px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-size: 12px; padding: 6px 11px; border-radius: 20px; cursor: pointer;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    transition: .15s;
+  }
+  .chip:hover { border-color: var(--accent); color: #fff; }
+  .composer { padding: 14px 22px 18px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+  .composer input {
+    flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 12px 14px; font-size: 14px; outline: none;
+  }
+  .composer input:focus { border-color: var(--accent); }
+  .composer button {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 0 20px; font-weight: 600; cursor: pointer; font-size: 14px;
+  }
+  .composer button:disabled { opacity: .5; cursor: not-allowed; }
+  .trace { background: var(--panel); display: flex; flex-direction: column; }
+  .trace h2 { padding: 14px 18px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .trace-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .step {
+    border-left: 2px solid var(--border); padding: 2px 0 10px 14px; position: relative;
+    animation: fade .3s ease;
+  }
+  @keyframes fade { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
+  .step::before {
+    content: ""; position: absolute; left: -5px; top: 4px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--border);
+  }
+  .step.think::before { background: var(--purple); }
+  .step.act::before { background: var(--amber); }
+  .step.observe::before { background: var(--accent2); }
+  .step.result::before { background: var(--green); }
+  .step .label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+  .step.think .label { color: var(--purple); }
+  .step.act .label { color: var(--amber); }
+  .step.observe .label { color: var(--accent2); }
+  .step.result .label { color: var(--green); }
+  .step .detail { font-size: 13px; margin-top: 3px; color: var(--text); }
+  .step pre { font-size: 11px; color: var(--muted); margin-top: 5px; white-space: pre-wrap; word-break: break-word; max-height: 130px; overflow: auto; }
+  .tools-bar { padding: 12px 18px; border-top: 1px solid var(--border); }
+  .tools-bar .t { font-size: 11px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .05em; }
+  .tools-bar .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge { font-size: 11px; padding: 4px 9px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--border); color: var(--accent2); }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; line-height: 1.6; }
+  .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">⬢</div>
+  <div>
+    <h1>AI Agent System</h1>
+    <div class="sub">ReAct reasoning loop · 6 tools · dual LLM</div>
+  </div>
+  <div class="status"><span class="dot"></span><span id="status">connecting…</span></div>
+</header>
+
+<div class="layout">
+  <div class="chat">
+    <div class="messages" id="messages">
+      <div class="empty">👋 Ask the agent to process a document, search the knowledge base,<br/>or extract entities. Watch the live reasoning trace on the right.</div>
+    </div>
+    <div class="examples" id="examples"></div>
+    <div class="composer">
+      <input id="input" placeholder="e.g. What is our refund policy?" autocomplete="off" />
+      <button id="send">Run</button>
+    </div>
+  </div>
+
+  <div class="trace">
+    <h2>Execution Trace</h2>
+    <div class="trace-body" id="traceBody">
+      <div class="empty" style="margin-top:20px">Reasoning steps appear here.</div>
+    </div>
+    <div class="tools-bar">
+      <div class="t">Registered Tools</div>
+      <div class="badges" id="toolBadges"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = location.origin;
+let sessionId = null;
+
+const EXAMPLES = [
+  "What is our refund policy?",
+  "What are the API rate limits?",
+  "Extract entities from: Invoice INV-2025-044, $4,250.00 due 2025-04-30, billing@acme.com",
+  "Process this document: Support ticket — the dashboard shows error 500 on login. Urgent.",
+  "Summarize: Q3 revenue grew 24% driven by enterprise. Key risk is churn in SMB. We recommend doubling onboarding investment.",
+];
+
+const $ = (id) => document.getElementById(id);
+
+function renderExamples() {
+  $("examples").innerHTML = "";
+  EXAMPLES.forEach((e) => {
+    const c = document.createElement("div");
+    c.className = "chip";
+    c.textContent = e.length > 46 ? e.slice(0, 44) + "…" : e;
+    c.title = e;
+    c.onclick = () => { $("input").value = e; run(); };
+    $("examples").appendChild(c);
+  });
+}
+
+function addMsg(role, html) {
+  const empty = $("messages").querySelector(".empty");
+  if (empty) empty.remove();
+  const m = document.createElement("div");
+  m.className = "msg " + role;
+  m.innerHTML = `<div class="role">${role === "user" ? "You" : "Agent"}</div><div class="bubble">${html}</div>`;
+  $("messages").appendChild(m);
+  $("messages").scrollTop = $("messages").scrollHeight;
+  return m;
+}
+
+function fmtBold(t) { return t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"); }
+
+function renderToolCards(parent, toolCalls) {
+  toolCalls.forEach((tc) => {
+    const d = document.createElement("details");
+    d.className = "toolcard";
+    d.innerHTML = `<summary>🔧 <span class="tname">${tc.tool}</span> · step ${tc.step}</summary>
+      <pre>input: ${JSON.stringify(tc.input, null, 2)}\n\noutput: ${JSON.stringify(tc.output, null, 2)}</pre>`;
+    parent.querySelector(".bubble").appendChild(d);
+  });
+}
+
+function renderTrace(trace) {
+  const body = $("traceBody");
+  body.innerHTML = "";
+  trace.forEach((s, i) => {
+    setTimeout(() => {
+      const el = document.createElement("div");
+      el.className = "step " + s.type;
+      let extra = "";
+      if (s.input) extra = `<pre>${JSON.stringify(s.input, null, 2)}</pre>`;
+      else if (s.output) extra = `<pre>${JSON.stringify(s.output, null, 2)}</pre>`;
+      el.innerHTML = `<div class="label">${s.type} · step ${s.step}</div>
+        <div class="detail">${s.detail}</div>${extra}`;
+      body.appendChild(el);
+      body.scrollTop = body.scrollHeight;
+    }, i * 220);
+  });
+}
+
+async function run() {
+  const q = $("input").value.trim();
+  if (!q) return;
+  $("input").value = "";
+  $("send").disabled = true;
+  addMsg("user", q.replace(/</g, "&lt;"));
+  const thinking = addMsg("agent", '<span class="spinner"></span> reasoning…');
+
+  try {
+    const res = await fetch(API + "/agent/run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: q, session_id: sessionId }),
+    });
+    const data = await res.json();
+    sessionId = data.session_id;
+    thinking.querySelector(".bubble").innerHTML = fmtBold(data.response.replace(/</g, "&lt;"));
+    renderToolCards(thinking, data.tool_calls);
+    renderTrace(data.trace || []);
+  } catch (e) {
+    thinking.querySelector(".bubble").innerHTML = "⚠️ " + e.message;
+  } finally {
+    $("send").disabled = false;
+    $("input").focus();
+  }
+}
+
+async function init() {
+  renderExamples();
+  try {
+    const h = await (await fetch(API + "/health")).json();
+    $("status").textContent = `provider: ${h.llm_provider} · ${h.available_tools.length} tools`;
+    $("toolBadges").innerHTML = h.available_tools
+      .map((t) => `<span class="badge">${t}</span>`).join("");
+  } catch {
+    $("status").textContent = "offline";
+  }
+}
+
+// NOTE: data.trace is included by the API response for the demo UI.
+$("send").onclick = run;
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+init();
+</script>
+</body>
+</html>

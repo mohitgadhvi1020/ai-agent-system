@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent System — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg:#0a0e16; --panel:#141b29; --border:#26324a; --text:#e6edf3; --muted:#8b9bb4; --accent:#6366f1; --cyan:#22d3ee; --green:#3fb950; --amber:#d29922; --purple:#a371f7; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"JetBrains Mono",monospace; background:radial-gradient(circle at 30% 0%, #14203a 0%, var(--bg) 60%); color:var(--text); min-height:100vh; padding:48px 32px; }
+  h1 { font-family:"Syne",sans-serif; font-size:38px; font-weight:800; letter-spacing:-.02em; }
+  .tag { font-family:"Syne",sans-serif; color:var(--cyan); font-size:14px; letter-spacing:.3em; text-transform:uppercase; margin-bottom:8px; }
+  .sub { color:var(--muted); margin-top:10px; font-size:14px; max-width:720px; line-height:1.6; }
+  .wrap { max-width:1100px; margin:0 auto; }
+  .stats { display:flex; gap:14px; margin:32px 0; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 22px; }
+  .stat .n { font-family:"Syne",sans-serif; font-size:26px; font-weight:800; color:var(--cyan); }
+  .stat .l { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-top:4px; }
+  .flow { margin-top:24px; }
+  .row { display:flex; align-items:stretch; gap:18px; justify-content:center; flex-wrap:wrap; margin:18px 0; }
+  .node { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px 20px; min-width:200px; position:relative; }
+  .node .icon { font-size:22px; }
+  .node h3 { font-family:"Syne",sans-serif; font-size:16px; margin:8px 0 6px; }
+  .node p { font-size:12px; color:var(--muted); line-height:1.5; }
+  .node.accent { border-color:var(--accent); box-shadow:0 0 30px rgba(99,102,241,.15); }
+  .node.cyan { border-color:var(--cyan); }
+  .node.green { border-color:var(--green); }
+  .arrow { display:grid; place-items:center; color:var(--muted); font-size:24px; }
+  .loop-badge { position:absolute; top:-11px; right:14px; background:var(--purple); color:#fff; font-size:10px; padding:3px 9px; border-radius:10px; letter-spacing:.08em; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
+  .tool { background:#0f1622; border:1px solid var(--border); border-radius:10px; padding:13px 15px; }
+  .tool .tn { color:var(--cyan); font-size:13px; font-weight:600; }
+  .tool .td { font-size:11px; color:var(--muted); margin-top:5px; line-height:1.5; }
+  .section-title { font-family:"Syne",sans-serif; font-size:13px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); margin:36px 0 4px; }
+  footer { margin-top:48px; color:var(--muted); font-size:12px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tag">System Architecture</div>
+  <h1>AI Agent System</h1>
+  <p class="sub">A ReAct-style autonomous agent. It observes a task, reasons about which tool to invoke, acts, observes the result, and loops — up to 10 steps — until the task resolves. Backed by Claude or GPT, with a deterministic heuristic planner for zero-key demos.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">6</div><div class="l">Tools</div></div>
+    <div class="stat"><div class="n">7</div><div class="l">Endpoints</div></div>
+    <div class="stat"><div class="n">10</div><div class="l">Max Steps</div></div>
+    <div class="stat"><div class="n">2</div><div class="l">LLM Backends</div></div>
+    <div class="stat"><div class="n">20</div><div class="l">Memory Turns</div></div>
+  </div>
+
+  <div class="flow">
+    <div class="row">
+      <div class="node accent"><div class="icon">🌐</div><h3>API Gateway</h3><p>FastAPI · /agent/run, /process-document, /batch, /sessions</p></div>
+      <div class="arrow">→</div>
+      <div class="node accent"><div class="loop-badge">ReAct LOOP</div><div class="icon">🧠</div><h3>Orchestrator</h3><p>observe → think → act → repeat. Selects tools, executes, feeds results back.</p></div>
+    </div>
+    <div class="row">
+      <div class="node cyan"><div class="icon">🤖</div><h3>Dual LLM</h3><p>Claude (input_schema) · OpenAI (function calling) · heuristic fallback</p></div>
+      <div class="arrow">↔</div>
+      <div class="node"><div class="icon">💾</div><h3>Session Memory</h3><p>Sliding window of 20 turns with automatic compaction of oldest 40%.</p></div>
+    </div>
+    <div class="row">
+      <div class="node green"><div class="icon">✅</div><h3>Response</h3><p>Final answer + full tool-call log + step-by-step reasoning trace.</p></div>
+    </div>
+  </div>
+
+  <div class="section-title">Tool Registry</div>
+  <div class="grid">
+    <div class="tool"><div class="tn">classify_document</div><div class="td">5-category weighted keyword scoring → category + confidence.</div></div>
+    <div class="tool"><div class="tn">extract_entities</div><div class="td">Regex extraction: emails, phones, amounts, dates, URLs, names.</div></div>
+    <div class="tool"><div class="tn">summarize_text</div><div class="td">Extractive summary with position + keyword scoring.</div></div>
+    <div class="tool"><div class="tn">create_task</div><div class="td">Creates a tracked task (TSK-XXXX) with priority + assignee.</div></div>
+    <div class="tool"><div class="tn">send_notification</div><div class="td">Slack / email / webhook delivery (simulated).</div></div>
+    <div class="tool"><div class="tn">search_knowledge_base</div><div class="td">Ranked keyword-overlap search over 5 articles.</div></div>
+  </div>
+
+  <footer>FastAPI · Pydantic · Anthropic + OpenAI SDKs · Docker · Python 3.11</footer>
+</div>
+</body>
+</html>
