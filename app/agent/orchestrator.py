@@ -198,6 +198,28 @@ class AgentOrchestrator:
         called = {c["tool"] for c in prior_calls}
         text = document_text if document_text is not None else task
         lowered = task.lower()
+        stripped = lowered.strip(" .!?,")
+
+        # Greetings / small talk / help — respond directly, no tools needed.
+        # Only for short inputs, so real documents that happen to contain words
+        # like "help me" still go through the document pipeline.
+        if document_text is None and not called and len(task.split()) <= 8:
+            greetings = {
+                "hi", "hello", "hey", "yo", "hi there", "hello there", "sup",
+                "howdy", "good morning", "good afternoon", "good evening",
+            }
+            thanks = {"thanks", "thank you", "thx", "ty", "cheers", "great", "cool", "nice"}
+            if stripped in greetings or any(
+                stripped.startswith(g + " ") for g in ["hi", "hello", "hey", "good "]
+            ):
+                return {"text": self._capabilities_message(), "tool_call": None}
+            if stripped in thanks:
+                return {"text": "You're welcome! Ask me anything else whenever you're ready.", "tool_call": None}
+            if any(
+                p in lowered
+                for p in ["what can you do", "who are you", "how do you work", "help me", "what are you"]
+            ) or stripped in {"help", "?"}:
+                return {"text": self._capabilities_message(), "tool_call": None}
 
         # Document pipeline
         is_doc = document_text is not None or any(
@@ -251,10 +273,28 @@ class AgentOrchestrator:
                 return self._call("extract_entities", {"text": text})
             return self._finish(prior_calls)
 
-        # Fallback: classify then stop
-        if "classify_document" not in called:
-            return self._call("classify_document", {"text": text})
+        # Long inputs that look like a document → classify them.
+        if len(task.split()) >= 12:
+            if "classify_document" not in called:
+                return self._call("classify_document", {"text": text})
+            return self._finish(prior_calls)
+
+        # Short, off-topic input → guide the user instead of forcing a tool.
+        if not called:
+            return {"text": self._capabilities_message(), "tool_call": None}
         return self._finish(prior_calls)
+
+    @staticmethod
+    def _capabilities_message() -> str:
+        return (
+            "👋 Hi! I'm a task-running agent. I reason step by step and call tools "
+            "to get things done. I can:\n"
+            "• Answer questions from the knowledge base (refunds, SLAs, API limits, onboarding, data retention)\n"
+            "• Process a document — classify it, extract entities, and create a task / notification\n"
+            "• Extract emails, phone numbers, amounts, and dates from text\n"
+            "• Summarize a passage\n\n"
+            "Try: \"What are the API rate limits?\" or paste a support ticket / invoice to process."
+        )
 
     # --- helpers ------------------------------------------------------------
     @staticmethod
