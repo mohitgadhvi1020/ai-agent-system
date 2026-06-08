@@ -260,9 +260,21 @@ async def send_notification(
 # ---------------------------------------------------------------------------
 # Tool 6: search_knowledge_base
 # ---------------------------------------------------------------------------
+# Common words ignored when scoring relevance so questions like "what is the
+# meaning of life" don't match on filler words such as "the"/"of"/"is".
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "of", "to",
+    "in", "on", "for", "and", "or", "our", "my", "your", "their", "what",
+    "which", "who", "how", "when", "where", "why", "do", "does", "did", "can",
+    "could", "would", "should", "i", "we", "you", "it", "this", "that", "with",
+    "about", "tell", "me", "please", "from", "by", "at", "as", "if",
+}
+
+
 async def search_knowledge_base(query: str, top_k: int = 3) -> Dict[str, Any]:
-    """Keyword-overlap search over the pre-loaded knowledge base."""
-    q_words = set(re.findall(r"\w+", query.lower()))
+    """Keyword-overlap search over the pre-loaded knowledge base (stopword-aware)."""
+    all_q_words = set(re.findall(r"\w+", query.lower()))
+    q_words = {w for w in all_q_words if w not in _STOPWORDS} or all_q_words
     results = []
     for article in _KNOWLEDGE_BASE:
         haystack = (
@@ -272,7 +284,7 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> Dict[str, Any]:
             + " "
             + " ".join(article["tags"])
         )
-        h_words = set(re.findall(r"\w+", haystack))
+        h_words = set(re.findall(r"\w+", haystack)) - _STOPWORDS
         overlap = q_words & h_words
         if not overlap:
             continue

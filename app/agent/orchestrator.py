@@ -255,22 +255,35 @@ class AgentOrchestrator:
                 )
             return self._finish(prior_calls)
 
-        # Knowledge base questions
-        if any(w in lowered for w in ["how", "what", "policy", "limit", "sla", "refund", "search", "find"]):
-            if "search_knowledge_base" not in called:
-                return self._call("search_knowledge_base", {"query": task})
-            return self._finish(prior_calls)
-
         # Summarization
         if "summar" in lowered:
             if "summarize_text" not in called:
-                return self._call("summarize_text", {"text": text})
+                # Strip a leading instruction like "Summarize:" so it isn't
+                # echoed back as part of the summary.
+                clean = re.sub(r"^\s*(please\s+)?summari[sz]e( this| the following)?[:\s-]*",
+                               "", text, flags=re.IGNORECASE)
+                return self._call("summarize_text", {"text": clean or text})
             return self._finish(prior_calls)
 
         # Entity extraction
         if any(w in lowered for w in ["extract", "email", "phone", "entit"]):
             if "extract_entities" not in called:
                 return self._call("extract_entities", {"text": text})
+            return self._finish(prior_calls)
+
+        # Knowledge base questions. Broad on purpose — the KB search is
+        # stopword-aware and returns a graceful "couldn't find" when nothing is
+        # relevant, so routing question-like input here is safe. Runs after the
+        # explicit summarize/extract intents so those take priority.
+        kb_triggers = [
+            "how", "what", "which", "who", "when", "where", "why", "explain",
+            "describe", "tell me", "about", "policy", "limit", "sla", "refund",
+            "search", "find", "onboard", "retention", "data", "backup", "gdpr",
+            "uptime", "support", "api", "rate", "plan", "pricing", "tier",
+        ]
+        if "?" in task or any(w in lowered for w in kb_triggers):
+            if "search_knowledge_base" not in called:
+                return self._call("search_knowledge_base", {"query": task})
             return self._finish(prior_calls)
 
         # Long inputs that look like a document → classify them.
@@ -312,35 +325,90 @@ class AgentOrchestrator:
                 return c["output"]
         return {}
 
+    _ENTITY_LABELS = {
+        "emails": ("email address", "email addresses"),
+        "phones": ("phone number", "phone numbers"),
+        "amounts": ("monetary amount", "monetary amounts"),
+        "dates": ("date", "dates"),
+        "urls": ("URL", "URLs"),
+        "names": ("name", "names"),
+    }
+
+    # Minimum keyword-overlap relevance for a KB answer to be trusted.
+    _KB_MIN_RELEVANCE = 0.25
+
+    @staticmethod
+    def _article(word: str) -> str:
+        return "an" if word[:1].lower() in "aeiou" else "a"
+
+    @staticmethod
+    def _kb_no_match() -> str:
+        return (
+            "I couldn't find anything relevant in the knowledge base for that. "
+            "I can help with refunds, SLAs, API rate limits, onboarding, and data retention."
+        )
+
+    @staticmethod
+    def _join_natural(items: List[str]) -> str:
+        """Join a list as 'a', 'a and b', or 'a, b, and c'."""
+        items = [i for i in items if i]
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        if len(items) == 2:
+            return f"{items[0]} and {items[1]}"
+        return ", ".join(items[:-1]) + f", and {items[-1]}"
+
     def _summarize_run(self, calls: List[Dict[str, Any]]) -> str:
         if not calls:
             return "No actions were necessary for this task."
+
+        # A standalone knowledge-base answer reads best as just the answer.
+        if len(calls) == 1 and calls[0]["tool"] == "search_knowledge_base":
+            out = calls[0]["output"]
+            results = out.get("results", []) if isinstance(out, dict) else []
+            if results and results[0].get("relevance", 0) >= self._KB_MIN_RELEVANCE:
+                top = results[0]
+                return f"{top['content']} (Source: {top['title']}.)"
+            return self._kb_no_match()
+
         parts = []
         for c in calls:
             out = c["output"]
             if c["tool"] == "classify_document" and isinstance(out, dict):
-                parts.append(
-                    f"Classified as **{out.get('category')}** "
-                    f"({int(out.get('confidence', 0) * 100)}% confidence)."
-                )
+                category = str(out.get("category", "document")).replace("_", " ")
+                pct = int(out.get("confidence", 0) * 100)
+                parts.append(f"This looks like {self._article(category)} {category} (I'm {pct}% confident).")
             elif c["tool"] == "extract_entities" and isinstance(out, dict):
-                found = ", ".join(f"{len(v)} {k}" for k, v in out.items() if v)
-                parts.append(f"Extracted {found or 'no entities'}.")
+                labels = []
+                for key, values in out.items():
+                    if not values:
+                        continue
+                    singular, plural = self._ENTITY_LABELS.get(key, (key, key))
+                    n = len(values)
+                    labels.append(f"{n} {singular if n == 1 else plural}")
+                if labels:
+                    parts.append(f"I pulled out {self._join_natural(labels)}.")
+                else:
+                    parts.append("I didn't find any specific entities to extract.")
             elif c["tool"] == "create_task" and isinstance(out, dict):
-                parts.append(f"Created task {out.get('id')} ({out.get('priority')} priority).")
+                parts.append(
+                    f"I opened a {out.get('priority')}-priority task ({out.get('id')}) to follow up."
+                )
             elif c["tool"] == "send_notification" and isinstance(out, dict):
-                parts.append(f"Sent {out.get('urgency')} notification to {out.get('channel')}.")
+                parts.append(f"I notified the {out.get('channel')} channel so the team is aware.")
             elif c["tool"] == "search_knowledge_base" and isinstance(out, dict):
-                top = out.get("results", [])
-                if top:
+                results = out.get("results", [])
+                if results and results[0].get("relevance", 0) >= self._KB_MIN_RELEVANCE:
                     parts.append(
-                        f"Found {len(top)} relevant article(s); top match: "
-                        f"\"{top[0]['title']}\" — {top[0]['content']}"
+                        f"From the knowledge base: {results[0]['content']} "
+                        f"(Source: {results[0]['title']}.)"
                     )
                 else:
-                    parts.append("No relevant knowledge base articles found.")
+                    parts.append("I didn't find a matching knowledge base article.")
             elif c["tool"] == "summarize_text" and isinstance(out, dict):
-                parts.append(f"Summary: {out.get('summary')}")
+                parts.append(f"Here's a summary: {out.get('summary')}")
         return " ".join(parts)
 
     async def _execute_tool(self, name: str, args: Dict[str, Any]) -> Any:
